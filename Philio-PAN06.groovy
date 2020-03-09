@@ -1,7 +1,7 @@
 /* Philio PAN06 Dual Relay by He-Man321
 Version 1.1 - 2020/03/05
+Version 1.2 - 2020/03/05 - Added the Current States initialisation in installation
 NOTE: 	This nust create the chid devices as 1 and 2 (e.g. 22-sw1 and 22-sw2). I have seen it create them with other numbers, which won't work - AI - 19/09
-		Also check the Current States section of the device in the IDE, it must show switch1 and switch2 if not, remove and re-add the device - AI - 20/03/05
 */ 
 metadata {
 definition (name:"Philio PAN06 Dual Relay",namespace:"",author:"He-Man321") {
@@ -20,6 +20,7 @@ command "off1"
 command "on2"
 command "off2"
 }
+fingerprint mfr:"013C", prod:"0001", model:"0013", deviceJoinName: "Philio PAN06 Dual Relay" //Untested so far, will see if the next one I add gets assigned this handler automatically - AI - 20/03/09
 tiles(scale: 2){
     multiAttributeTile(name:"switch", type: "lighting", width: 6, height: 4, canChangeIcon: true){
 			tileAttribute ("device.switch", key: "PRIMARY_CONTROL") {
@@ -66,29 +67,23 @@ def parse(String description) {
         log.debug "Non-parsed event: ${description}"
     return result
 }
-
-def zwaveEvent(physicalgraph.zwave.commands.multichannelv3.MultiChannelCapabilityReport cmd) 
-{
+def zwaveEvent(physicalgraph.zwave.commands.multichannelv3.MultiChannelCapabilityReport cmd) {
     log.debug "MultiChannelCapabilityReport: $cmd"
 }
-
 def zwaveEvent(physicalgraph.zwave.commands.multichannelv3.MultiChannelEndPointReport cmd) {
 	log.debug "MultiChannelEndPointReport: $cmd"
 }
-
-def zwaveEvent(physicalgraph.zwave.commands.switchbinaryv1.SwitchBinaryReport cmd)
-{
+def zwaveEvent(physicalgraph.zwave.commands.switchbinaryv1.SwitchBinaryReport cmd) {
     def result=[]
     result << zwave.multiChannelV3.multiChannelCmdEncap(sourceEndPoint:1,destinationEndPoint:1,commandClass:37,command:2).format()
     result << zwave.multiChannelV3.multiChannelCmdEncap(sourceEndPoint:1,destinationEndPoint:2,commandClass:37,command:2).format()
-    response(delayBetween(result,1000))
+    delayBetween(result,1000)
 }
-def zwaveEvent(physicalgraph.zwave.commands.basicv1.BasicReport cmd)
-{   
+def zwaveEvent(physicalgraph.zwave.commands.basicv1.BasicReport cmd) {   
     def result=[]
     result << zwave.multiChannelV3.multiChannelCmdEncap(sourceEndPoint:1,destinationEndPoint:1,commandClass:37,command:2).format()
     result << zwave.multiChannelV3.multiChannelCmdEncap(sourceEndPoint:1,destinationEndPoint:2,commandClass:37,command:2).format()
-    response(delayBetween(result,1000))    
+    delayBetween(result,1000)
 }
 def zwaveEvent(physicalgraph.zwave.commands.multichannelv3.MultiChannelCmdEncap cmd) {    
     def curswitch=cmd.sourceEndPoint
@@ -134,19 +129,7 @@ def poll() {
 def configure() {
     zwave.configurationV1.configurationSet(parameterNumber:2,configurationValue:[settings.param2==null?1:settings.param2]).format()
 }
-def updated()
-{
-    def cmds=configure()
-    if (!childDevices) {
-		state.oldLabel=device.label
-		try {
-			for (i in 1..2)
-				addChildDevice("erocm123","Switch Child Device","${device.deviceNetworkId}-sw${i}",device.hub.id,[completedSetup:true,name:"${device.displayName} (S${i})",isComponent:false])
-        } catch (e) {
-            log.error "Child device creation failed. Please make sure that the \"Switch Child Device\" is installed and published."
-        }
-    }    
-    response(cmds)
+def updated() {
 }
 def childRefresh(String dni) {
     refresh()
@@ -177,4 +160,19 @@ def on2() {
 }
 def off2() {
 	zwave.multiChannelV3.multiChannelCmdEncap(sourceEndPoint:3,destinationEndPoint:2,commandClass:37,command:1,parameter:[0]).format()
+}
+def installed() {
+    zwave.manufacturerSpecificV1.manufacturerSpecificGet()
+	def cmds=configure()
+    if (!childDevices) {
+		try {
+			for (i in 1..2)
+				addChildDevice("erocm123","Switch Child Device","${device.deviceNetworkId}-sw${i}",device.hub.id,[completedSetup:true,name:"${device.displayName} (S${i})",isComponent:false])
+        } catch (e) {
+            log.error "Child device creation failed. Please make sure that the \"Switch Child Device\" is installed and published."
+        }
+    }    
+    sendEvent(name: "switch1", value: "off") //Need this to create the Current States - AI - 20/03/09
+    sendEvent(name: "switch2", value: "off") //Need this to create the Current States - AI - 20/03/09
+    return(cmds)
 }
